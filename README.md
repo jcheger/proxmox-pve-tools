@@ -6,7 +6,7 @@ It works for me, and I share them with the rest of the world. Consider them as a
 ## qcow2-check
 QCOW2 files are very performant, bud badly protected. It may happen that the file gets corrupted, sometimes unrecoverable, and it often happens while creating a snapshot. Such damage can be prevented by checking the QCOW2 file. It is safe to run this check on running VM disks.
 
-If a file is detected as damaged, move in to another place (using the disk move function in Proxmox), and it will get fixed.
+If a file is detected as damaged, move it to storage (using the disk move function in Proxmox), and it will get fixed.
 
 ## qcow2-check-all
 This script will search QCOW2 files in all the defined storage paths, and then check them with qcow2-check.
