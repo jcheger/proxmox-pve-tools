@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+import os, re, sys
+
+if len (sys.argv) < 2:
+	print ("ERROR: Usage: " + sys.argv[0] + " disk.qcow2")
+	exit (2)
+
+file=str(sys.argv[1])
+
+if not os.path.isfile (file):
+	print ("ERROR: file " + file + " not found")
+	exit (2)
+
+def popen (cmd):
+    import subprocess
+
+    if type(cmd) is list:
+        cmds = cmd
+    else:
+        cmds = cmd.split(' ')
+
+    p1 = subprocess.Popen(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={'LANG':'C'})
+    out,err=p1.communicate()
+
+def run (cmd, timeout=0, lang=False):
+    import subprocess
+
+    if type(cmd) is list:
+        cmds = cmd
+    else:
+        cmds = cmd.split(' ')
+
+    r = {
+        "cmd": cmd,
+        "timeout": timeout,
+        "result": "",
+        "log": []
+    }
+    if lang:
+        os.environ.putenv ("LANG", lang)
+    if (timeout > 0):
+        proc = subprocess.run (cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    else:
+        proc = subprocess.run (cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        r["stdout"] = proc.stdout.decode("utf-8").splitlines()
+        r["stderr"] = proc.stderr.decode("utf-8").splitlines()
+        r["exitcode"] = proc.returncode
+        if proc.returncode == 0:
+            r["result"] = "ok"
+        else:
+            r["result"] = "warning"
+    except subprocess.TimeoutExpired:
+        proc.kill ()
+        r["stdout"] = stdout
+        r["stderr"] = stderr
+        r["result"] = "timeout"
+        r["exitcode"] = proc.returncode
+    except subprocess.CalledProcessError as e:
+        r["log"].append = e
+        r["result"] = "error"
+    except Exception as e:
+        r["log"].append = e
+        r["result"] = "error"
+    return r
+
+def search (lines, pattern):
+    for line in lines:
+        m = re.match (pattern, line)
+        if m:
+            #print ("-- MATCH: " + m.groups)
+            return m.groups()
+    return False
+
+def checkImg (file):
+    check = run ("qemu-img check " + file)
+
+    r = {"corrupted": False, "leaked": False, "status": "ok"}
+    #r["errors"] = r["errors"] = int(search (check["stdout"], "^(\d+) errors")[0])
+    if check["exitcode"] == 1:
+        r["status"] = "intenal error"
+    elif check["exitcode"] == 2:
+        r["status"] = "corrupted"
+        r["corrupted"] = True
+    elif check["exitcode"] == 3:
+        r["status"] = "leaked"
+        r["leaked"] = True
+    elif check["exitcode"] > 3:
+        r["status"] = "unknown error"
+
+    return r
+
+print (file + "... ", end="")
+r = checkImg (file)
+print (r["status"])
+

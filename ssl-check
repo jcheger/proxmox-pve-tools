@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+BASE=$(readlink -f "$0" | xargs dirname)
+
+OK='\E[32m\033[1m✓\033[0m'
+FAIL='\E[31m\033[1m✗\033[0m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+function checkCrtKey {
+  echo -n "  Check that CRT [$1] matches KEY [$2]"
+  crtmod=$(openssl x509 -noout -modulus -in "$1" | openssl md5)
+  keymod=$(openssl rsa  -noout -modulus -in "$2" | openssl md5)
+  if [ "$crtmod" = "$keymod" ]; then
+    okfail 0
+    return 0
+  else
+    okfail 1
+    return 1
+  fi
+}
+
+function checkRsaKey {
+  echo -n "  Check RSA KEY [$1]"
+  size=$(openssl rsa -text -noout -in "$1" | grep Private-Key | awk -F'[()]' '{print $2}')
+  if [ "$size" = "" ]; then
+    echo -e $FAIL
+    return 1
+  else
+    echo -e " (${size})\r${OK}"
+    return 0
+  fi
+}
+
+function checkCrtCa {
+  echo -n "  Check that CRT [$1] is signed by CA CRT [$2]"
+  openssl verify -verbose -CAfile "$2" "$1" >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    okfail 0
+    return 0
+  else
+    okfail 1
+    return 1
+  fi
+}
+
+function okfail {
+  if [ $1 = 0 ]; then
+    echo -e "\r${OK}"
+  else
+    echo -e "\r${FAIL}"
+  fi
+}
+
+echo
+checkRsaKey "/etc/pve/priv/pve-root-ca.key"
+checkCrtKey "/etc/pve/pve-root-ca.pem" "/etc/pve/priv/pve-root-ca.key"
+
+if [ $? -eq 0 ]; then
+  echo -e "\nUsing internal CA\n"
+else
+  echo -e "\nWarning: you are not using the internal certificate - this is OK,"
+  echo -e "but you must supply signed certificates to each host by your self."
+  echo -e "If checks below fail, nodes will not work in Proxmox environment.\n"
+fi
+
+for dir in $(find /etc/pve/nodes -mindepth 1 -maxdepth 1 -type d); do
+  echo "Checking $dir"
+  checkRsaKey "$dir/pve-ssl.key"
+  checkCrtKey "$dir/pve-ssl.pem" "$dir/pve-ssl.key"
+  checkCrtCa  "$dir/pve-ssl.pem" "/etc/pve/pve-root-ca.pem"
+  echo
+done

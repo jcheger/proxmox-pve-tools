@@ -1,0 +1,41 @@
+#!/bin/bash
+
+BASE=$(readlink -f "$0" | xargs dirname)
+
+COUNTRY=$(curl -s ipinfo.io | sed -n 's/.*"country": "\(.*\)",/\1/p')
+FQDN=$(hostname --fqdn)
+IPV4=$(ip -4 route get 8.8.8.8 | head -n1 | awk '{print $7}')
+
+if [ -e /etc/pve/nodes/$HOSTNAME/pve-ssl.key ]; then
+
+  CNF=/etc/pve/nodes/$HOSTNAME/$HOSTNAME.cnf
+  if [ ! -e $CNF ]; then
+    cp $BASE/openssl.cnf $CNF
+    sed -i -e "s/{{COUNTRY}}/$COUNTRY/"   $CNF
+    sed -i -e "s/{{FQDN}}/$FQDN/"         $CNF
+    sed -i -e "s/{{HOSTNAME}}/$HOSTNAME/" $CNF
+    sed -i -e "s/{{IPV4}}/$IPV4/"         $CNF
+  else
+    echo
+    echo "Using existing CNF file ($CNF)"
+  fi
+
+  echo
+  echo "Please review openssl's configuration file before creating the CSR. Press any key to continue ..."
+  read -p ""
+  echo
+  /etc/alternatives/editor $CNF
+
+  openssl req -new -out /etc/pve/nodes/$HOSTNAME/$HOSTNAME.csr -key /etc/pve/nodes/$HOSTNAME/pve-ssl.key -config $CNF
+
+  echo
+  cat /etc/pve/nodes/$HOSTNAME/$HOSTNAME.csr
+  echo
+  echo "Your CSR is here: /etc/pve/nodes/$HOSTNAME/$HOSTNAME.csr"
+else
+  echo "ERROR"
+  echo "You must run this script on the node you want the CSR for."
+  echo "The node must already be added to the cluster."
+fi
+
+echo
