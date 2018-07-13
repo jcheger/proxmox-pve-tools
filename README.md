@@ -1,5 +1,5 @@
 # proxmox-pve-tools
-Collection of utilities for Proxmox PVE maintenance.
+Collection of utilities I've written for Proxmox PVE maintenance.
 
 It works for me, and I share them with the rest of the world. Consider them as alpha quality - without warranty.
 
