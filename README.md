@@ -1,5 +1,7 @@
 # proxmox-pve-tools
-Few utilities for Proxmox PVE maintenance
+Collection of utilities for Proxmox PVE maintenance.
+
+It works for me, and I share them with the rest of the world.
 
 ## qcow2-check
 QCOW2 files are very performant, bud badly protected. It may happen that the file gets corrupted, sometimes unrecoverable, and it often happens while creating a snapshot. Such damage can be prevented by checking the QCOW2 file. It is safe to run this check on running VM disks.
