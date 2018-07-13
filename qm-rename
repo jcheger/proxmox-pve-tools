@@ -1,0 +1,133 @@
+#!/usr/bin/perl -w
+
+$vmid_f = shift || die;
+$vmid_t = shift || die;
+
+unless (-e "/etc/pve/qemu-server/$vmid_f.conf") {
+	print STDOUT "ERROR: vmid $vmid_f not found on this node !\n";
+	exit 2;
+}
+
+$out = `find /etc/pve/nodes/*/qemu-server -name "$vmid_t.conf" | grep conf`;
+if ($? == 0) {
+	($node) = $out =~ /\/etc\/pve\/nodes\/(.*)\/qemu-server/;
+	print STDOUT "ERROR: vmid $vmid_t already exist on node $node !\n";
+	exit 2;
+}
+
+$out = `qm status $vmid_f`;
+unless ($out =~ /status: stopped/) {
+	print STDERR "ERROR: vmid $vmid_f is not stopped !\n";
+	exit 2;
+}
+
+get_storage ();
+process ();
+
+sub process {
+	my $i;
+	my $f;
+	my $t;
+#	@rename_disks    = [];
+#	@rename_path_dup = [];
+	#@rename_path     = [];
+#	@rename_sed      = [];
+#	@rename_conf     = [];
+	open FILE, "< /etc/pve/qemu-server/$vmid_f.conf";
+	while (my $line = <FILE>) {
+		if (($s, $df, $e) = $line =~ /^(?:ide|sata|virtio)\d+: (.*):$vmid_f\/(.*)\.(raw|qcow2|vmdk)/) {
+			$f = $storage{$s} . "/images/$vmid_f/$df.$e";
+			$dt = $df;
+			$dt =~ s/$vmid_f/$vmid_t/;
+			$t = $storage{$s} . "/images/$vmid_f/$dt.$e";
+			unless (-e $f) {
+				print "ERROR: file $f not found !\n";
+				exit 2;
+			}
+			if (-e $t) {
+				print "ERROR: file $t does already exist !\n";
+				exit 2;
+			}
+			#print "mv $f $t\n";
+			push (@rename_disks, "mv $f $t");
+
+			#print "sed -i -e 's/$vmid_f\/$df/$vmid_t\/$dt/' /etc/pve/qemu-server/$vmid_f.conf\n";
+			push (@rename_sed, "sed -i -e 's/$vmid_f\\/$df/$vmid_t\\/$dt/' /etc/pve/qemu-server/$vmid_f.conf");
+
+			#print "sed -i -e 's/:$vmid_f:/:$vmid_t:/' /etc/pve/user.cfg\n";
+			push (@rename_sed, "sed -i -e 's/:$vmid_f:/:$vmid_t:/' /etc/pve/user.cfg");
+
+			#print "sed -i -e 's/:$vmid_f,/:$vmid_t,/' /etc/pve/user.cfg\n";
+			push (@rename_sed, "sed -i -e 's/:$vmid_f,/:$vmid_t,/' /etc/pve/user.cfg");
+
+			#print "sed -i -e 's/,$vmid_f,/,$vmid_t,/' /etc/pve/user.cfg\n";
+			push (@rename_sed, "sed -i -e 's/,$vmid_f,/,$vmid_t,/' /etc/pve/user.cfg");
+
+			#print "sed -i -e 's/,$vmid_f:/,$vmid_t:/' /etc/pve/user.cfg\n";
+			push (@rename_sed, "sed -i -e 's/,$vmid_f:/,$vmid_t:/' /etc/pve/user.cfg");
+
+			#print "sed -i -e 's/ $vmid_f / $vmid_t /' /etc/pve/vzdump.cron\n";
+			push (@rename_sed, "sed -i -e 's/ $vmid_f / $vmid_t /' /etc/pve/vzdump.cron");
+
+			$f = $storage{$s} . "/images/$vmid_f";
+			$t = $storage{$s} . "/images/$vmid_t";
+			if (-f $t) {
+				print "ERROR: destination path $t already exist !\n";
+				exit 2;
+			}
+			#print "mv $f $t\n";
+			push (@rename_path_dup, "mv $f $t");
+
+			if (-e "/etc/pve/qemu-server/$vmid_t.conf") {
+				print "ERROR: destination conf $vmid_t.conf already exist !\n";
+				exit 2;
+			}
+		}
+	}
+	close FILE;
+
+	#print "mv /etc/pve/qemu-server/$vmid_f.conf /etc/pve/qemu-server/$vmid_t.conf\n";
+	push (@rename_conf, "mv /etc/pve/qemu-server/$vmid_f.conf /etc/pve/qemu-server/$vmid_t.conf");
+
+	my %seen;
+	@rename_path = grep {!$seen{$_}++} @rename_path_dup;
+
+	print "-----\n";
+
+	for $run (@rename_disks) {
+		print "$run\n";
+		`$run`;
+	}
+
+	for $run (@rename_sed) {
+		print "$run\n";
+		`$run`;
+	}
+
+	for $run (@rename_path) {
+		print "$run\n";
+		`$run`;
+	}
+
+	for $run (@rename_conf) {
+		print "$run\n";
+		`$run`;
+	}
+}
+
+sub get_storage {
+	my $name;
+	my $path;
+	my $m;
+#	%storage;
+	open FILE, "< /etc/pve/storage.cfg";
+	while (my $line = <FILE>) {
+		if (($m) = $line =~ /^\w+: (.*)/) {
+			$name = $m;
+		} elsif (($m) = $line =~ /path (.*)/) {
+			$path = $m;
+			$storage{$name} = $path;
+		}
+	}
+	close FILE;
+}
